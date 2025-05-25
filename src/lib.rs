@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufReader, copy};
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -35,19 +37,33 @@ pub fn handle_request(
     path: &str,
     base_dir: &str,
     routes: &HashMap<String, Handler>,
-) -> (u16, String, String, Option<Vec<u8>>) {
+) -> (
+    u16,
+    String,
+    String,
+    Box<dyn Fn(&mut dyn Write) -> std::io::Result<()>>,
+) {
     if method != "GET" {
         return (
             405,
             "Method Not Allowed".to_string(),
             "text/plain".to_string(),
-            None,
+            Box::new(|_| Ok(())),
         );
     }
 
     if let Some(handler) = routes.get(path) {
         let (body, content_type) = handler();
-        return (200, "OK".to_string(), content_type, Some(body.into_bytes()));
+        let body_bytes = body.into_bytes();
+        return (
+            200,
+            "OK".to_string(),
+            content_type,
+            Box::new(move |writer| {
+                writer.write_all(&body_bytes)?;
+                Ok(())
+            }),
+        );
     }
 
     let path = if path == "/" {
@@ -59,10 +75,8 @@ pub fn handle_request(
     // let file_path = format!("{}{}", base_dir, path.trim_start_matches('/'));
     let file_path = Path::new(base_dir).join(path).to_str().unwrap().to_string();
 
-    println!("Looking for file: {}", file_path);
-
     if Path::new(&file_path).exists() {
-        let contents = std::fs::read(&file_path).unwrap();
+        // let contents = std::fs::read(&file_path).unwrap();
 
         let content_type = match Path::new(path).extension().and_then(|s| s.to_str()) {
             Some("html") => "text/html",
@@ -74,10 +88,20 @@ pub fn handle_request(
             200,
             "OK".to_string(),
             content_type.to_string(),
-            Some(contents),
+            Box::new(move |writer| {
+                let file = File::open(&file_path).unwrap();
+                let mut reader = BufReader::new(file);
+                copy(&mut reader, writer)?;
+                Ok(())
+            }),
         )
     } else {
-        (404, "Not Found".to_string(), "text/plain".to_string(), None)
+        (
+            404,
+            "Not Found".to_string(),
+            "text/plain".to_string(),
+            Box::new(|_| Ok(())),
+        )
     }
 }
 
@@ -99,18 +123,16 @@ pub fn handle_connection(
         return;
     }
 
-    let (status, reason, content_type, body) = handle_request(&method, &path, base_dir, routes);
-    let body = body.unwrap_or_default();
+    let (status, reason, content_type, stream_fn) =
+        handle_request(&method, &path, base_dir, routes);
+    // let body = body.unwrap_or_default();
 
     let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
-        status,
-        reason,
-        content_type,
-        body.len()
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\n\r\n",
+        status, reason, content_type,
     );
 
     stream.write_all(response.as_bytes()).unwrap();
-    stream.write_all(&body).unwrap();
+    stream_fn(&mut stream).unwrap();
     stream.flush().unwrap();
 }
