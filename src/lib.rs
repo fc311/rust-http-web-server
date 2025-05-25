@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-
+use std::io::{Read, Write};
 use std::path::Path;
 
 mod tests;
@@ -79,4 +79,38 @@ pub fn handle_request(
     } else {
         (404, "Not Found".to_string(), "text/plain".to_string(), None)
     }
+}
+
+pub fn handle_connection(
+    mut stream: impl Read + Write,
+    base_dir: &str,
+    routes: &HashMap<String, Handler>,
+) {
+    let mut buffer = [0; 1024];
+    stream.read(&mut buffer).unwrap();
+
+    let request = String::from_utf8_lossy(&buffer[..]);
+    let (method, path, headers) = parse_request(&request);
+
+    if !headers.contains_key("Host") && method != "" {
+        let response = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n";
+        stream.write_all(response.as_bytes()).unwrap();
+        stream.flush().unwrap();
+        return;
+    }
+
+    let (status, reason, content_type, body) = handle_request(&method, &path, base_dir, routes);
+    let body = body.unwrap_or_default();
+
+    let response = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
+        status,
+        reason,
+        content_type,
+        body.len()
+    );
+
+    stream.write_all(response.as_bytes()).unwrap();
+    stream.write_all(&body).unwrap();
+    stream.flush().unwrap();
 }

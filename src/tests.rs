@@ -1,10 +1,11 @@
 #[cfg(test)]
-mod test {
+mod tests {
 
-    use crate::{Handler, handle_request, parse_request, parse_request_line};
+    use crate::{Handler, handle_connection, handle_request, parse_request, parse_request_line};
     use std::collections::HashMap;
     use std::fs::File;
-    use std::io::Write;
+    use std::io::Cursor;
+    use std::io::{Read, Write};
     use tempfile::TempDir;
 
     #[test]
@@ -92,5 +93,50 @@ mod test {
             body,
             Some(r#"{"message": "Hello, World!"}"#.as_bytes().to_vec())
         );
+    }
+
+    struct MockStream {
+        read_data: Cursor<Vec<u8>>,
+        write_data: Vec<u8>,
+    }
+
+    impl Read for MockStream {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.read_data.read(buf)
+        }
+    }
+
+    impl Write for MockStream {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.write_data.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_handle_connection_valid_request() {
+        let mut routes: HashMap<String, Handler> = HashMap::new();
+        routes.insert("/api/hello".to_string(), || {
+            (
+                r#"{"message": "Hello"}"#.to_string(),
+                "application/json".to_string(),
+            )
+        });
+
+        let request = b"GET /api/hello HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let mut stream = MockStream {
+            read_data: Cursor::new(request.to_vec()),
+            write_data: Vec::new(),
+        };
+
+        handle_connection(&mut stream, "", &routes);
+
+        let response = String::from_utf8_lossy(&stream.write_data);
+
+        assert!(response.contains("HTTP/1.1 200 OK"));
+        assert!(response.contains(r#"{"message": "Hello"}"#));
     }
 }
