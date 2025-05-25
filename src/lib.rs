@@ -4,6 +4,8 @@ use std::io::Write;
 use std::path::Path;
 use tempfile::TempDir;
 
+type Handler = fn() -> (String, String);
+
 pub fn parse_request_line(line: &str) -> (&str, &str, &str) {
     let parts: Vec<&str> = line.split_whitespace().filter(|s| !s.is_empty()).collect();
     if parts.len() == 3 {
@@ -32,6 +34,7 @@ pub fn handle_request(
     method: &str,
     path: &str,
     base_dir: &str,
+    routes: &HashMap<String, Handler>,
 ) -> (u16, String, String, Option<Vec<u8>>) {
     if method != "GET" {
         return (
@@ -40,6 +43,11 @@ pub fn handle_request(
             "text/plain".to_string(),
             None,
         );
+    }
+
+    if let Some(handler) = routes.get(path) {
+        let (body, content_type) = handler();
+        return (200, "OK".to_string(), content_type, Some(body.into_bytes()));
     }
 
     let path = if path == "/" { "index.html" } else { path };
@@ -115,10 +123,31 @@ mod test {
             "GET",
             "/nonexistent.html",
             temp_dir.path().to_str().unwrap(),
+            &HashMap::new(),
         );
         assert_eq!(status, 404);
         assert_eq!(reason, "Not Found");
         assert_eq!(content_type, "text/plain");
         assert!(body.is_none());
+    }
+
+    #[test]
+    fn test_handle_request_api_route() {
+        let mut routes: HashMap<String, Handler> = HashMap::new();
+        routes.insert("/api/hello".to_string(), || {
+            (
+                r#"{"message": "Hello, World!"}"#.to_string(),
+                "application/json".to_string(),
+            )
+        });
+
+        let (status, reason, content_type, body) = handle_request("GET", "/api/hello", "", &routes);
+        assert_eq!(status, 200);
+        assert_eq!(reason, "OK");
+        assert_eq!(content_type, "application/json");
+        assert_eq!(
+            body,
+            Some(r#"{"message": "Hello, World!"}"#.as_bytes().to_vec())
+        );
     }
 }
