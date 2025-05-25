@@ -6,7 +6,7 @@ use std::path::Path;
 
 mod tests;
 
-type Handler = fn() -> (String, String);
+pub type Handler = fn() -> (String, String);
 
 pub fn parse_request_line(line: &str) -> (&str, &str, &str) {
     let parts: Vec<&str> = line.split_whitespace().filter(|s| !s.is_empty()).collect();
