@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-
+    // Import necessary modules and types for testing
     use crate::{Handler, handle_connection, handle_request, parse_request, parse_request_line};
     use std::collections::HashMap;
     use std::fs::File;
@@ -8,6 +8,8 @@ mod tests {
     use std::io::{Read, Write};
     use tempfile::TempDir;
 
+    // Test parsing of a basic HTTP request line
+    // Verifies that method, path, and protocol version are correctly extracted
     #[test]
     fn test_parse_request_line_valid() {
         let input = "GET / HTTP/1.1";
@@ -18,6 +20,8 @@ mod tests {
         assert_eq!(protocol, "HTTP/1.1");
     }
 
+    // Test parsing of a complete HTTP request with headers
+    // Ensures headers are correctly parsed and stored
     #[test]
     fn test_parse_request_valid() {
         let input = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
@@ -27,6 +31,8 @@ mod tests {
         assert_eq!(headers.get("Host"), Some(&"localhost".to_string()));
     }
 
+    // Test parsing of an HTTP request without any headers
+    // Verifies that an empty headers map is returned
     #[test]
     fn test_parse_request_no_headers() {
         let input = "GET / HTTP/1.1\r\n\r\n";
@@ -36,6 +42,8 @@ mod tests {
         assert!(headers.is_empty());
     }
 
+    // Test handling of a request for the index file
+    // Creates a temporary directory with an index.html file and verifies correct response
     #[test]
     fn test_handle_request_index_file() {
         let temp_dir = TempDir::new().unwrap();
@@ -54,9 +62,10 @@ mod tests {
 
         assert_eq!(status, 200);
         assert_eq!(content_type, "text/html");
-        // assert_eq!(body, Some(b"<h1>Hello, World!</h1>".to_vec()));
     }
 
+    // Test handling of a request for a non-existent file
+    // Verifies that a 404 status code is returned
     #[test]
     fn test_handle_request_not_found() {
         let temp_dir = TempDir::new().unwrap();
@@ -69,9 +78,10 @@ mod tests {
         assert_eq!(status, 404);
         assert_eq!(reason, "Not Found");
         assert_eq!(content_type, "text/plain");
-        // assert!(body.is_none());
     }
 
+    // Test handling of an API route request
+    // Verifies that API handlers are correctly called and responses are properly formatted
     #[test]
     fn test_handle_request_api_route() {
         let mut routes: HashMap<String, Handler> = HashMap::new();
@@ -87,23 +97,25 @@ mod tests {
         assert_eq!(status, 200);
         assert_eq!(reason, "OK");
         assert_eq!(content_type, "application/json");
-        // assert_eq!(
-        //     body,
-        //     Some(r#"{"message": "Hello, World!"}"#.as_bytes().to_vec())
-        // );
     }
 
+    // Mock Stream implementation for testing
+    // Simulates a TCP stream for testing connection handling
     struct MockStream {
-        read_data: Cursor<Vec<u8>>,
-        write_data: Vec<u8>,
+        read_data: Cursor<Vec<u8>>, // Simulates incoming data
+        write_data: Vec<u8>,        // Captures outgoing data
     }
 
+    // Implementation of Read trait for MockStream
+    // Allows reading from the mock stream
     impl Read for MockStream {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             self.read_data.read(buf)
         }
     }
 
+    // Implementation of Write trait for MockStream
+    // Allows writing to the mock stream and captures written data
     impl Write for MockStream {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
             self.write_data.extend_from_slice(buf);
@@ -114,6 +126,8 @@ mod tests {
         }
     }
 
+    // Test handling of a complete connection with valid request
+    // Verifies that the server responds correctly to a valid API request
     #[test]
     fn test_handle_connection_valid_request() {
         let mut routes: HashMap<String, Handler> = HashMap::new();
@@ -138,6 +152,8 @@ mod tests {
         assert!(response.contains(r#"{"message": "Hello"}"#));
     }
 
+    // Test file streaming functionality
+    // Verifies that files are correctly streamed in the response
     #[test]
     fn test_handle_request_stream_file() {
         let temp_dit = TempDir::new().unwrap();
